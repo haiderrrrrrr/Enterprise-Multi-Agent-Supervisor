@@ -1,0 +1,252 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
+      - WATCHPACK_POLLING=true
+    env_file:
+      - .env
+    volumes:
+      - ./Multi-Agent-System-BSE-7A-Frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: pnpm dev
+    networks:
+      - app_network
+    depends_on:
+      - supervisor
+
+  supervisor:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: supervisor/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Multi-Agent-System-BSE-7A-Backend:/app
+    environment:
+      - AGENT_EXTERNAL_HOST=localhost
+      - SUPERVISOR_GEMINI_API_KEY=${SUPERVISOR_GEMINI_API_KEY}
+      - GEMINI_API_KEY=${SUPERVISOR_GEMINI_API_KEY}
+      - GEMINI_WRAPPER_API_KEY=${GEMINI_WRAPPER_API_KEY}
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  gemini-wrapper:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/gemini_wrapper_agent/Dockerfile
+    ports:
+      - "5010:5010"
+    env_file:
+      - .env
+    environment:
+      - GEMINI_WRAPPER_API_KEY=${GEMINI_WRAPPER_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_WRAPPER_API_KEY}
+    networks:
+      - app_network
+
+  research-scout-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/research_scout_agent/Dockerfile
+    ports:
+      - "5014:5014"
+    networks:
+      - app_network
+
+  adaptive-quiz-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/adaptive_quiz_master/Dockerfile
+    ports:
+      - "5020:5020"
+    environment:
+      - GEMINI_WRAPPER_HOST=gemini-wrapper
+      - GEMINI_WRAPPER_PORT=5010
+    networks:
+      - app_network
+
+  concept-reinforcement-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/concept_reinforcement_agent/Dockerfile
+    ports:
+      - "5015:5015"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  presentation-feedback-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/presentation_feedback_agent/Dockerfile
+    ports:
+      - "5030:5030"
+    env_file:
+      - .env
+    environment:
+      - PRESENTATION_FEEDBACK_GEMINI_API_KEY=${PRESENTATION_FEEDBACK_GEMINI_API_KEY}
+      - GEMINI_API_KEY=${PRESENTATION_FEEDBACK_GEMINI_API_KEY}
+    networks:
+      - app_network
+
+  peer-collaboration-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/peer_collaboration/Dockerfile
+    ports:
+      - "5017:5017"
+    networks:
+      - app_network
+
+  plagiarism-prevention-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/plagiarism_prevention_agent/Dockerfile
+    ports:
+      - "5018:8000"
+    networks:
+      - app_network
+
+  assignment-coach-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/assignment_coach/Dockerfile
+    ports:
+      - "5012:5012"
+    env_file:
+      - .env
+    environment:
+      - GEMINI_API_KEY=${CITATION_GEMINI_API_KEY}
+    networks:
+      - app_network
+
+  # Daily Revision Proctor Agent (Study Session Tracker)
+  proctor-db:
+    image: postgres:16-alpine
+    container_name: proctor_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: study_tracker_db
+    volumes:
+      - proctor_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  daily-revision-proctor-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/Proctor_Ai/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@proctor-db:5432/study_tracker_db
+      SECRET_KEY: your-secret-key-change-in-production-minimum-32-characters-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    env_file:
+      - .env
+    depends_on:
+      proctor-db:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  exam-readiness-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/exam_readiness/Dockerfile
+    ports:
+      - "5024:5024"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  citation-manager-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/citation_manager/Dockerfile
+    ports:
+      - "5016:5016"
+    env_file:
+      - .env
+    environment:
+      - CSL_STYLE_DIR=/app/agents/citation_manager/csl
+      - GEMINI_WRAPPER_HOST=gemini-wrapper
+      - GEMINI_WRAPPER_PORT=5010
+      - GEMINI_API_KEY=${CITATION_GEMINI_API_KEY}
+      - GEMINI_API_URL=${GEMINI_API_URL}
+    depends_on:
+      - gemini-wrapper
+    networks:
+      - app_network
+
+  lecture-insight-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/lecture_insight/Dockerfile
+    ports:
+      - "5021:5020"
+    env_file:
+      - .env
+    environment:
+      - GEMINI_API_KEY=${CITATION_GEMINI_API_KEY}
+      - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+    networks:
+      - app_network
+
+  study-scheduler-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/StudySchedulerAgent/backend/Dockerfile
+    ports:
+      - "5023:5023"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  question-anticipator-agent:
+    build:
+      context: ./Multi-Agent-System-BSE-7A-Backend
+      dockerfile: agents/Question_Anticipator_Agent/Dockerfile
+    ports:
+      - "5022:5022"
+    env_file:
+      - .env
+    environment:
+      - QUESTION_ANTICIPATOR_GEMINI_API_KEY=${QUESTION_ANTICIPATOR_GEMINI_API_KEY}
+      - LLM_PROVIDER=gemini
+      - LLM_MODEL=models/gemma-3-4b-it
+    volumes:
+      - question_anticipator_chroma:/app/chroma_db
+    networks:
+      - app_network
+
+volumes:
+  proctor_postgres_data:
+  question_anticipator_chroma:
+
+networks:
+  app_network:
+    driver: bridge
